@@ -87,12 +87,6 @@
 
 
 
-
-
-
-
-
-
 #include <asf.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -132,9 +126,8 @@ const uint32_t BUTTON_Y = ILI9488_LCD_HEIGHT/2;
 */
 #define ANALOG_CHANNEL				 2
 
-/** The conversion data is done flag */
-volatile bool g_is_conversion_done = false;
-volatile bool g_is_conversion_done_analog = false;
+
+
 /** The conversion data value */
 volatile uint32_t g_ul_value = 0;
 volatile uint32_t g_ul_value_analog = 0;
@@ -150,7 +143,8 @@ volatile uint32_t g_ul_value_analog = 0;
 #define TASK_LCD_STACK_PRIORITY        (tskIDLE_PRIORITY)
 
 #define TASK_ANALOG_STACK_SIZE            (2*1024/sizeof(portSTACK_TYPE))
-#define TASK_ANALOG_STACK_SIZE        (tskIDLE_PRIORITY)
+#define TASK_ANALOG_STACK_PRIORITY        (tskIDLE_PRIORITY)
+
 
 
 typedef struct {
@@ -159,12 +153,32 @@ typedef struct {
 } touchData;
 
 QueueHandle_t xQueueTouch;
+QueueHandle_t xQueueTemp;
 
-
-int temperatura;
-int potencia;
-
+int temperatura = 0 ;
+int potencia =0 ;
+char buffer[200];
 SemaphoreHandle_t xSemaphore;
+
+
+/*****************************************************************
+/* PWM
+***************************************/
+#include "conf_clock.h"
+
+#define PIO_PWM_0 PIOA
+#define ID_PIO_PWM_0 ID_PIOA
+#define MASK_PIN_PWM_0 (1 << 0)
+
+/** PWM frequency in Hz */
+#define PWM_FREQUENCY      1000
+/** Period value of PWM output waveform */
+#define PERIOD_VALUE       100
+/** Initial duty cycle value */
+#define INIT_DUTY_VALUE    0
+
+/** PWM channel instance for LEDs */
+pwm_channel_t g_pwm_channel_led;
 
 /************************************************************************/
 /* RTOS hooks                                                           */
@@ -329,21 +343,18 @@ static void mxt_init(struct mxt_device *device)
 static void AFEC_Pot_callback(void)
 {
 	g_ul_value_analog = afec_channel_get_value(AFEC0, ANALOG_CHANNEL);
-	g_is_conversion_done_analog = true;
+
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	printf("callback \n");
-	xSemaphoreGive(xSemaphore, &xHigherPriorityTaskWoken);
+	xSemaphoreGiveFromISR(xSemaphore, &xHigherPriorityTaskWoken);
 	printf("semafaro tx \n");
 	
 }
 
-
-
-
-
 void draw_screen(void) {
 	ili9488_set_foreground_color(COLOR_CONVERT(COLOR_WHITE));
 	ili9488_draw_filled_rectangle(0, 0, ILI9488_LCD_WIDTH-1, ILI9488_LCD_HEIGHT-1);
+	
 	ili9488_draw_pixmap(200,50,soneca.height,soneca.width,soneca.data);
 	ili9488_draw_pixmap(50,300,termometro.width,termometro.height,termometro.data);
     ili9488_draw_pixmap(200,300,ar.width,ar.height,ar.data);
@@ -441,6 +452,93 @@ void mxt_handler(struct mxt_device *device, uint *x, uint *y)
 	} while ((mxt_is_message_pending(device)) & (i < MAX_ENTRIES));
 }
 
+static void config_ADC_TEMP(void){
+/*************************************
+   * Ativa e configura AFEC
+   *************************************/
+  /* Ativa AFEC - 0 */
+	afec_enable(AFEC0);
+
+	/* struct de configuracao do AFEC */
+	struct afec_config afec_cfg;
+
+	/* Carrega parametros padrao */
+	afec_get_config_defaults(&afec_cfg);
+
+	/* Configura AFEC */
+	afec_init(AFEC0, &afec_cfg);
+
+	/* Configura trigger por software */
+	afec_set_trigger(AFEC0, AFEC_TRIG_SW);
+
+	/* configura call back */
+	
+	afec_set_callback(AFEC0, AFEC_INTERRUPT_EOC_2,	AFEC_Pot_callback, 5);
+
+	/*** Configuracao específica do canal AFEC ***/
+	struct afec_ch_config afec_ch_cfg;
+	afec_ch_get_config_defaults(&afec_ch_cfg);
+	afec_ch_cfg.gain = AFEC_GAINVALUE_0;
+
+	afec_ch_set_config(AFEC0, ANALOG_CHANNEL, &afec_ch_cfg);
+
+	/*
+	* Calibracao:
+	* Because the internal ADC offset is 0x200, it should cancel it and shift
+	 down to 0.
+	 */
+	
+	
+	afec_channel_set_analog_offset(AFEC0, ANALOG_CHANNEL, 0x200);
+
+	/***  Configura sensor de temperatura ***/
+	struct afec_temp_sensor_config afec_temp_sensor_cfg;
+
+	afec_temp_sensor_get_config_defaults(&afec_temp_sensor_cfg);
+	afec_temp_sensor_set_config(AFEC0, &afec_temp_sensor_cfg);
+	
+
+	/* Selecina canal e inicializa conversão */
+
+	
+	afec_channel_enable(AFEC0, ANALOG_CHANNEL);
+}
+
+void PWM0_init(uint channel, uint duty){
+	/* Enable PWM peripheral clock */
+	pmc_enable_periph_clk(ID_PWM0);
+
+	/* Disable PWM channels for LEDs */
+	pwm_channel_disable(PWM0, PIN_PWM_LED0_CHANNEL);
+
+	/* Set PWM clock A as PWM_FREQUENCY*PERIOD_VALUE (clock B is not used) */
+	pwm_clock_t clock_setting = {
+		.ul_clka = PWM_FREQUENCY * PERIOD_VALUE,
+		.ul_clkb = 0,
+		.ul_mck = sysclk_get_peripheral_hz()
+	};
+	
+	pwm_init(PWM0, &clock_setting);
+
+	/* Initialize PWM channel for LED0 */
+	/* Period is left-aligned */
+	g_pwm_channel_led.alignment = PWM_ALIGN_CENTER;
+	/* Output waveform starts at a low level */
+	g_pwm_channel_led.polarity = PWM_HIGH;
+	/* Use PWM clock A as source clock */
+	g_pwm_channel_led.ul_prescaler = PWM_CMR_CPRE_CLKA;
+	/* Period value of output waveform */
+	g_pwm_channel_led.ul_period = PERIOD_VALUE;
+	/* Duty cycle value of output waveform */
+	g_pwm_channel_led.ul_duty = duty;
+	g_pwm_channel_led.channel = channel;
+	pwm_channel_init(PWM0, &g_pwm_channel_led);
+	
+	/* Enable PWM channels for LEDs */
+	pwm_channel_enable(PWM0, channel);
+}
+
+
 /************************************************************************/
 /* tasks                                                                */
 /************************************************************************/
@@ -463,47 +561,65 @@ void task_mxt(void){
 }
 
 void task_lcd(void){
-  xQueueTouch = xQueueCreate( 10, sizeof( touchData ) );
+	xQueueTouch = xQueueCreate( 10, sizeof( touchData ) );
+   xQueueTemp = xQueueCreate( 10, sizeof( int ) );
 	configure_lcd();
   
   draw_screen();
   draw_button(0);
   
-  //escreve 
-  font_draw_text(&digital52, "HH:MM", 0, 0, 1);
-  font_draw_text(&digital52, "temp", 50, 350, 1);
-  font_draw_text(&digital52, "pot", 200, 350, 1);
+  
   touchData touch;
+  int temp;
+  
+  //escreve
+  
+  font_draw_text(&digital52, "HH:MM", 0, 0, 1);
+  
+  font_draw_text(&digital52, "pot", 200, 350, 1);
     
   while (true) {  
      if (xQueueReceive( xQueueTouch, &(touch), ( TickType_t )  500 / portTICK_PERIOD_MS)) {
        update_screen(touch.x, touch.y);
-       printf("x:%d y:%d\n", touch.x, touch.y);
-     }     
+      }  
+	  if (xQueueReceive( xQueueTemp, &(temp), ( TickType_t )  500 / portTICK_PERIOD_MS)) {
+		  sprintf(temp,buffer);
+		  font_draw_text(&digital52, buffer, 50, 350, 1);
+	  }   
   }	 
+  
+  
 }
 void task_analog(void){
+	
 	int32_t ul_vol;
-  int32_t ul_pot;
-  int32_t ul_volume;
   
+  xSemaphore = xSemaphoreCreateBinary();
 
-  /*
-   * converte bits -> tensão (Volts)
-   */
-	ul_vol = ADC_value * VOLT_REF / (float) MAX_DIGITAL;
+        /* devemos iniciar a interrupcao no pino somente apos termos alocado
+           os recursos (no caso semaforo), nessa funcao inicializamos 
+           o botao e seu callback*/
+        
+		config_ADC_TEMP();
+	
 
-  /*
-   * According to datasheet, The output voltage VT = 0.72V at 27C
-   * and the temperature slope dVT/dT = 2.33 mV/C
-   */
-  //ul_pot = (ul_vol - 720)  * 100 / 233 + 27;
-  ul_volume = (16*(ul_vol)-300)/3270;
-  printf("C: %d",ul_vol);
-  printf("VOUMW: %d",ul_volume);
-  
-  return(ul_volume);
+	if (xSemaphore == NULL)
+		printf("falha em criar o semaforo \n");
+
+	for (;;) {
+		if( xSemaphoreTake(xSemaphore, ( TickType_t ) 500) == pdTRUE ){
+			const TickType_t xDelay = 100/ portTICK_PERIOD_MS;
+			/*
+	   * converte bits -> tensão (Volts)
+	   */
+		ul_vol = g_ul_value_analog * VOLT_REF / (float) MAX_DIGITAL;
+		temperatura = ul_vol;
+	 	
+		 xQueueSend( xQueueTemp, temperatura, 0); 	
+		} 
+ 
 }
+	}
 
 /************************************************************************/
 /* main                                                                 */
@@ -536,7 +652,7 @@ int main(void)
   }
   
    /* Create task to handler ANALOG */
-   if (xTaskCreate(task_analog, "analog", TASK_ANALOG_STACK_SIZE, NULL, TASK_ANALOG_STACK_SIZE, NULL) != pdPASS) {
+   if (xTaskCreate(task_analog, "analog", TASK_ANALOG_STACK_SIZE, NULL, TASK_ANALOG_STACK_PRIORITY, NULL) != pdPASS) {
 	   printf("Failed to create test led task\r\n");
    }
 
@@ -550,3 +666,4 @@ int main(void)
 
 	return 0;
 }
+
