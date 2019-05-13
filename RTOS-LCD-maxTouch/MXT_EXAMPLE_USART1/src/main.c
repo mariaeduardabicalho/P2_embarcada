@@ -84,6 +84,15 @@
  * Support and FAQ: visit <a href="https://www.microchip.com/support/">Microchip Support</a>
  */
 
+
+
+
+
+
+
+
+
+
 #include <asf.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -91,6 +100,14 @@
 #include "conf_board.h"
 #include "conf_example.h"
 #include "conf_uart_serial.h"
+#include "tfont.h"
+#include "ar.h"
+#include "soneca.h"
+#include "termometro.h"
+#include "digital521.h"
+//#include smaphr.h
+
+
 
 /************************************************************************/
 /* LCD + TOUCH                                                          */
@@ -103,6 +120,25 @@ const uint32_t BUTTON_H = 150;
 const uint32_t BUTTON_BORDER = 2;
 const uint32_t BUTTON_X = ILI9488_LCD_WIDTH/2;
 const uint32_t BUTTON_Y = ILI9488_LCD_HEIGHT/2;
+
+
+/** Reference voltage for AFEC,in mv. */
+#define VOLT_REF        (3300)
+/** The maximal digital value */
+/** 2^12 - 1                  */
+#define MAX_DIGITAL     (4095)
+/**
+* potenciometrO
+*/
+#define ANALOG_CHANNEL				 2
+
+/** The conversion data is done flag */
+volatile bool g_is_conversion_done = false;
+volatile bool g_is_conversion_done_analog = false;
+/** The conversion data value */
+volatile uint32_t g_ul_value = 0;
+volatile uint32_t g_ul_value_analog = 0;
+
 	
 /************************************************************************/
 /* RTOS                                                                  */
@@ -113,12 +149,22 @@ const uint32_t BUTTON_Y = ILI9488_LCD_HEIGHT/2;
 #define TASK_LCD_STACK_SIZE            (2*1024/sizeof(portSTACK_TYPE))
 #define TASK_LCD_STACK_PRIORITY        (tskIDLE_PRIORITY)
 
+#define TASK_ANALOG_STACK_SIZE            (2*1024/sizeof(portSTACK_TYPE))
+#define TASK_ANALOG_STACK_SIZE        (tskIDLE_PRIORITY)
+
+
 typedef struct {
   uint x;
   uint y;
 } touchData;
 
 QueueHandle_t xQueueTouch;
+
+
+int temperatura;
+int potencia;
+
+SemaphoreHandle_t xSemaphore;
 
 /************************************************************************/
 /* RTOS hooks                                                           */
@@ -278,9 +324,30 @@ static void mxt_init(struct mxt_device *device)
 /* funcoes                                                              */
 /************************************************************************/
 
+
+
+static void AFEC_Pot_callback(void)
+{
+	g_ul_value_analog = afec_channel_get_value(AFEC0, ANALOG_CHANNEL);
+	g_is_conversion_done_analog = true;
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	printf("callback \n");
+	xSemaphoreGive(xSemaphore, &xHigherPriorityTaskWoken);
+	printf("semafaro tx \n");
+	
+}
+
+
+
+
+
 void draw_screen(void) {
 	ili9488_set_foreground_color(COLOR_CONVERT(COLOR_WHITE));
 	ili9488_draw_filled_rectangle(0, 0, ILI9488_LCD_WIDTH-1, ILI9488_LCD_HEIGHT-1);
+	ili9488_draw_pixmap(200,50,soneca.height,soneca.width,soneca.data);
+	ili9488_draw_pixmap(50,300,termometro.width,termometro.height,termometro.data);
+    ili9488_draw_pixmap(200,300,ar.width,ar.height,ar.data);
+	
 }
 
 void draw_button(uint32_t clicked) {
@@ -288,7 +355,8 @@ void draw_button(uint32_t clicked) {
 	if(clicked == last_state) return;
 	
 	ili9488_set_foreground_color(COLOR_CONVERT(COLOR_BLACK));
-	ili9488_draw_filled_rectangle(BUTTON_X-BUTTON_W/2, BUTTON_Y-BUTTON_H/2, BUTTON_X+BUTTON_W/2, BUTTON_Y+BUTTON_H/2);
+	//ili9488_draw_filled_rectangle(BUTTON_X-BUTTON_W/2, BUTTON_Y-BUTTON_H/2, BUTTON_X+BUTTON_W/2, BUTTON_Y+BUTTON_H/2);
+	/**
 	if(clicked) {
 		ili9488_set_foreground_color(COLOR_CONVERT(COLOR_TOMATO));
 		ili9488_draw_filled_rectangle(BUTTON_X-BUTTON_W/2+BUTTON_BORDER, BUTTON_Y+BUTTON_BORDER, BUTTON_X+BUTTON_W/2-BUTTON_BORDER, BUTTON_Y+BUTTON_H/2-BUTTON_BORDER);
@@ -297,6 +365,7 @@ void draw_button(uint32_t clicked) {
 		ili9488_draw_filled_rectangle(BUTTON_X-BUTTON_W/2+BUTTON_BORDER, BUTTON_Y-BUTTON_H/2+BUTTON_BORDER, BUTTON_X+BUTTON_W/2-BUTTON_BORDER, BUTTON_Y-BUTTON_BORDER);
 	}
 	last_state = clicked;
+	**/
 }
 
 uint32_t convert_axis_system_x(uint32_t touch_y) {
@@ -320,6 +389,21 @@ void update_screen(uint32_t tx, uint32_t ty) {
 		}
 	}
 }
+
+void font_draw_text(tFont *font, const char *text, int x, int y, int spacing) {
+	char *p = text;
+	while(*p != NULL) {
+		char letter = *p;
+		int letter_offset = letter - font->start_char;
+		if(letter <= font->end_char) {
+			tChar *current_char = font->chars + letter_offset;
+			ili9488_draw_pixmap(x, y, current_char->image->width, current_char->image->height, current_char->image->data);
+			x += current_char->image->width + spacing;
+		}
+		p++;
+	}
+}
+
 
 void mxt_handler(struct mxt_device *device, uint *x, uint *y)
 {
@@ -384,6 +468,11 @@ void task_lcd(void){
   
   draw_screen();
   draw_button(0);
+  
+  //escreve 
+  font_draw_text(&digital52, "HH:MM", 0, 0, 1);
+  font_draw_text(&digital52, "temp", 50, 350, 1);
+  font_draw_text(&digital52, "pot", 200, 350, 1);
   touchData touch;
     
   while (true) {  
@@ -392,6 +481,28 @@ void task_lcd(void){
        printf("x:%d y:%d\n", touch.x, touch.y);
      }     
   }	 
+}
+void task_analog(void){
+	int32_t ul_vol;
+  int32_t ul_pot;
+  int32_t ul_volume;
+  
+
+  /*
+   * converte bits -> tensão (Volts)
+   */
+	ul_vol = ADC_value * VOLT_REF / (float) MAX_DIGITAL;
+
+  /*
+   * According to datasheet, The output voltage VT = 0.72V at 27C
+   * and the temperature slope dVT/dT = 2.33 mV/C
+   */
+  //ul_pot = (ul_vol - 720)  * 100 / 233 + 27;
+  ul_volume = (16*(ul_vol)-300)/3270;
+  printf("C: %d",ul_vol);
+  printf("VOUMW: %d",ul_volume);
+  
+  return(ul_volume);
 }
 
 /************************************************************************/
@@ -423,6 +534,11 @@ int main(void)
   if (xTaskCreate(task_lcd, "lcd", TASK_LCD_STACK_SIZE, NULL, TASK_LCD_STACK_PRIORITY, NULL) != pdPASS) {
     printf("Failed to create test led task\r\n");
   }
+  
+   /* Create task to handler ANALOG */
+   if (xTaskCreate(task_analog, "analog", TASK_ANALOG_STACK_SIZE, NULL, TASK_ANALOG_STACK_SIZE, NULL) != pdPASS) {
+	   printf("Failed to create test led task\r\n");
+   }
 
   /* Start the scheduler. */
   vTaskStartScheduler();

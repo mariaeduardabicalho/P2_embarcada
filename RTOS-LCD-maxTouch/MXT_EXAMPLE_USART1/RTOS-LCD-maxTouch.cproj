@@ -42,6 +42,7 @@
     <option id="sam.drivers.mpu" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.drivers.pio" value="Add" config="" content-id="Atmel.ASF" />
     <option id="thirdparty.os.freertos.version" value="Add" config="8.2.3" content-id="Atmel.ASF" />
+    <option id="sam.drivers.pwm" value="Add" config="" content-id="Atmel.ASF" />
     <option id="common.components.touch.mxt.example_usart" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.utils.cmsis.same70.source.template" value="Add" config="" content-id="Atmel.ASF" />
   </options>
@@ -305,6 +306,8 @@
     <file path="src/ASF/thirdparty/freertos/freertos-8.2.3/Source/list.c" framework="" version="3.40.0" source="thirdparty\freertos\freertos-8.2.3\Source\list.c" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/thirdparty/freertos/freertos-8.2.3/Source/tasks.c" framework="" version="3.40.0" source="thirdparty\freertos\freertos-8.2.3\Source\tasks.c" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/thirdparty/freertos/freertos-8.2.3/Source/timers.c" framework="" version="3.40.0" source="thirdparty\freertos\freertos-8.2.3\Source\timers.c" changed="False" content-id="Atmel.ASF" />
+    <file path="src/ASF/sam/drivers/pwm/pwm.h" framework="" version="3.40.0" source="sam\drivers\pwm\pwm.h" changed="False" content-id="Atmel.ASF" />
+    <file path="src/ASF/sam/drivers/pwm/pwm.c" framework="" version="3.40.0" source="sam\drivers\pwm\pwm.c" changed="False" content-id="Atmel.ASF" />
   </files>
   <documentation help="http://asf.atmel.com/docs/3.40.0/common.components.touch.mxt.example_usart.same70_xplained/html/index.html" />
   <offline-documentation help="" />
@@ -389,6 +392,7 @@
       <Value>../src/ASF/sam/drivers/spi</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/include</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/portable/GCC/ARM_CM7/r0p1</Value>
+      <Value>../src/ASF/sam/drivers/pwm</Value>
     </ListValues>
   </armgcc.compiler.directories.IncludePaths>
   <armgcc.compiler.optimization.level>Optimize for size (-Os)</armgcc.compiler.optimization.level>
@@ -446,6 +450,7 @@
       <Value>../src/ASF/sam/drivers/spi</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/include</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/portable/GCC/ARM_CM7/r0p1</Value>
+      <Value>../src/ASF/sam/drivers/pwm</Value>
     </ListValues>
   </armgcc.assembler.general.IncludePaths>
   <armgcc.preprocessingassembler.general.AssemblerFlags>-DARM_MATH_CM7=true -DBOARD=SAME70_XPLAINED -D__SAME70Q21B__ -Dprintf=iprintf -Dscanf=iscanf -DILI9488_SPIMODE -D__FREERTOS__</armgcc.preprocessingassembler.general.AssemblerFlags>
@@ -486,6 +491,7 @@
       <Value>../src/ASF/sam/drivers/spi</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/include</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/portable/GCC/ARM_CM7/r0p1</Value>
+      <Value>../src/ASF/sam/drivers/pwm</Value>
     </ListValues>
   </armgcc.preprocessingassembler.general.IncludePaths>
 </ArmGcc>
@@ -548,6 +554,7 @@
       <Value>../src/ASF/sam/drivers/spi</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/include</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/portable/GCC/ARM_CM7/r0p1</Value>
+      <Value>../src/ASF/sam/drivers/pwm</Value>
     </ListValues>
   </armgcc.compiler.directories.IncludePaths>
   <armgcc.compiler.optimization.level>Optimize (-O1)</armgcc.compiler.optimization.level>
@@ -606,6 +613,7 @@
       <Value>../src/ASF/sam/drivers/spi</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/include</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/portable/GCC/ARM_CM7/r0p1</Value>
+      <Value>../src/ASF/sam/drivers/pwm</Value>
     </ListValues>
   </armgcc.assembler.general.IncludePaths>
   <armgcc.assembler.debugging.DebugLevel>Default (-g)</armgcc.assembler.debugging.DebugLevel>
@@ -647,6 +655,7 @@
       <Value>../src/ASF/sam/drivers/spi</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/include</Value>
       <Value>../src/ASF/thirdparty/freertos/freertos-8.2.3/Source/portable/GCC/ARM_CM7/r0p1</Value>
+      <Value>../src/ASF/sam/drivers/pwm</Value>
     </ListValues>
   </armgcc.preprocessingassembler.general.IncludePaths>
   <armgcc.preprocessingassembler.debugging.DebugLevel>Default (-Wa,-g)</armgcc.preprocessingassembler.debugging.DebugLevel>
@@ -690,6 +699,7 @@
     <Folder Include="src\ASF\sam\drivers\mpu\" />
     <Folder Include="src\ASF\sam\drivers\pio\" />
     <Folder Include="src\ASF\sam\drivers\pmc\" />
+    <Folder Include="src\ASF\sam\drivers\pwm\" />
     <Folder Include="src\ASF\sam\drivers\spi\" />
     <Folder Include="src\ASF\sam\drivers\twihs\" />
     <Folder Include="src\ASF\sam\drivers\uart\" />
@@ -731,6 +741,18 @@
     <Folder Include="src\config\" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="src\soneca.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\termometro.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\tfont.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <None Include="src\ar.png">
+      <SubType>compile</SubType>
+    </None>
     <None Include="src\asf.h">
       <SubType>compile</SubType>
     </None>
@@ -1076,6 +1098,9 @@
     <None Include="src\ASF\common\boards\board.h">
       <SubType>compile</SubType>
     </None>
+    <Compile Include="src\ar.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\ASF\common\components\touch\mxt\mxt_device_1.c">
       <SubType>compile</SubType>
     </Compile>
@@ -1367,6 +1392,12 @@
     <Compile Include="src\ASF\sam\drivers\pmc\sleep.c">
       <SubType>compile</SubType>
     </Compile>
+    <None Include="src\ASF\sam\drivers\pwm\pwm.h">
+      <SubType>compile</SubType>
+    </None>
+    <Compile Include="src\ASF\sam\drivers\pwm\pwm.c">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\ASF\sam\drivers\spi\spi.c">
       <SubType>compile</SubType>
     </Compile>
@@ -1466,6 +1497,9 @@
     <Compile Include="src\ASF\thirdparty\freertos\freertos-8.2.3\Source\timers.c">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\digital521.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\main.c">
       <SubType>compile</SubType>
     </Compile>
@@ -1479,6 +1513,15 @@
       <SubType>compile</SubType>
     </None>
     <None Include="src\ASF\thirdparty\CMSIS\README.txt">
+      <SubType>compile</SubType>
+    </None>
+    <None Include="src\interface.png">
+      <SubType>compile</SubType>
+    </None>
+    <None Include="src\soneca.png">
+      <SubType>compile</SubType>
+    </None>
+    <None Include="src\termometro.png">
       <SubType>compile</SubType>
     </None>
   </ItemGroup>
