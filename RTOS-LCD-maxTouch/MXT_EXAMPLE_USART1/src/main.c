@@ -99,7 +99,7 @@
 #include "soneca.h"
 #include "termometro.h"
 #include "digital521.h"
-//#include smaphr.h
+
 
 
 
@@ -157,7 +157,8 @@ QueueHandle_t xQueueTemp;
 
 int temperatura = 0 ;
 int potencia =0 ;
-char buffer[200];
+char bufferp[200];
+char buffert[200];
 SemaphoreHandle_t xSemaphore;
 
 
@@ -343,11 +344,7 @@ static void mxt_init(struct mxt_device *device)
 static void AFEC_Pot_callback(void)
 {
 	g_ul_value_analog = afec_channel_get_value(AFEC0, ANALOG_CHANNEL);
-
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	printf("callback \n");
-	xSemaphoreGiveFromISR(xSemaphore, &xHigherPriorityTaskWoken);
-	printf("semafaro tx \n");
+   xSemaphoreGiveFromISR(xSemaphore, NULL);
 	
 }
 
@@ -563,10 +560,13 @@ void task_mxt(void){
 void task_lcd(void){
 	xQueueTouch = xQueueCreate( 10, sizeof( touchData ) );
    xQueueTemp = xQueueCreate( 10, sizeof( int ) );
-	configure_lcd();
-  
-  draw_screen();
-  draw_button(0);
+	
+	   configure_lcd();
+	  draw_screen();
+	  draw_button(0);
+	  //int duty=0;
+	  //PWM0_init(0, duty);
+	  
   
   
   touchData touch;
@@ -575,24 +575,35 @@ void task_lcd(void){
   //escreve
   
   font_draw_text(&digital52, "HH:MM", 0, 0, 1);
-  
-  font_draw_text(&digital52, "pot", 200, 350, 1);
+  int pot= 0;
+  sprintf(bufferp,"%d",pot);
+  font_draw_text(&digital52, bufferp, 250, 400, 1);
     
   while (true) {  
      if (xQueueReceive( xQueueTouch, &(touch), ( TickType_t )  500 / portTICK_PERIOD_MS)) {
        update_screen(touch.x, touch.y);
       }  
-	  if (xQueueReceive( xQueueTemp, &(temp), ( TickType_t )  500 / portTICK_PERIOD_MS)) {
-		  sprintf(temp,buffer);
-		  font_draw_text(&digital52, buffer, 50, 350, 1);
-	  }   
+		
+	  if( xSemaphoreTake(xSemaphore, ( TickType_t ) 50) == pdTRUE ){
+			const TickType_t xDelay = 100/ portTICK_PERIOD_MS;
+			/*
+	   * converte bits -> tensão (Volts)
+	   */
+				int32_t ul_vol;
+
+		ul_vol = g_ul_value_analog * VOLT_REF / (float) MAX_DIGITAL;
+		temperatura = ul_vol;
+		  sprintf(buffert,"%d",temperatura);
+		  font_draw_text(&digital52, buffert, 50, 400, 1);
+		  	printf("%d\n", temperatura);
+
+		}  
   }	 
   
   
 }
 void task_analog(void){
 	
-	int32_t ul_vol;
   
   xSemaphore = xSemaphoreCreateBinary();
 
@@ -607,18 +618,9 @@ void task_analog(void){
 		printf("falha em criar o semaforo \n");
 
 	for (;;) {
-		if( xSemaphoreTake(xSemaphore, ( TickType_t ) 500) == pdTRUE ){
-			const TickType_t xDelay = 100/ portTICK_PERIOD_MS;
-			/*
-	   * converte bits -> tensão (Volts)
-	   */
-		ul_vol = g_ul_value_analog * VOLT_REF / (float) MAX_DIGITAL;
-		temperatura = ul_vol;
-	 	
-		 xQueueSend( xQueueTemp, temperatura, 0); 	
-		} 
- 
-}
+		afec_start_software_conversion(AFEC0);
+		vTaskDelay(4000);
+		}
 	}
 
 /************************************************************************/
@@ -640,6 +642,7 @@ int main(void)
 	
 	/* Initialize stdio on USART */
 	stdio_serial_init(USART_SERIAL_EXAMPLE, &usart_serial_options);
+	printf("teste print \n");
 		
   /* Create task to handler touch */
   if (xTaskCreate(task_mxt, "mxt", TASK_MXT_STACK_SIZE, NULL, TASK_MXT_STACK_PRIORITY, NULL) != pdPASS) {
@@ -653,8 +656,8 @@ int main(void)
   
    /* Create task to handler ANALOG */
    if (xTaskCreate(task_analog, "analog", TASK_ANALOG_STACK_SIZE, NULL, TASK_ANALOG_STACK_PRIORITY, NULL) != pdPASS) {
-	   printf("Failed to create test led task\r\n");
-   }
+  	   printf("Failed to create test led task\r\n");
+    }
 
   /* Start the scheduler. */
   vTaskStartScheduler();
