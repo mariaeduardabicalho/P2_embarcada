@@ -124,13 +124,26 @@ const uint32_t BUTTON_Y = ILI9488_LCD_HEIGHT/2;
 /**
 * potenciometrO
 */
-#define ANALOG_CHANNEL				 2
+#define ANALOG_CHANNEL				 0
 
 
 
 /** The conversion data value */
 volatile uint32_t g_ul_value = 0;
 volatile uint32_t g_ul_value_analog = 0;
+
+
+////////////////// oled
+
+//PIOD
+#define but1_id  28u
+#define but1_mask  (1u	<<but1_id)
+
+
+//PIOA
+#define but3_id  19u
+#define but3_mask  (1u<<but3_id)
+
 
 	
 /************************************************************************/
@@ -139,7 +152,7 @@ volatile uint32_t g_ul_value_analog = 0;
 #define TASK_MXT_STACK_SIZE            (2*1024/sizeof(portSTACK_TYPE))
 #define TASK_MXT_STACK_PRIORITY        (tskIDLE_PRIORITY)  
 
-#define TASK_LCD_STACK_SIZE            (2*1024/sizeof(portSTACK_TYPE))
+#define TASK_LCD_STACK_SIZE            (4*1024/sizeof(portSTACK_TYPE))
 #define TASK_LCD_STACK_PRIORITY        (tskIDLE_PRIORITY)
 
 #define TASK_ANALOG_STACK_SIZE            (2*1024/sizeof(portSTACK_TYPE))
@@ -155,11 +168,12 @@ typedef struct {
 QueueHandle_t xQueueTouch;
 QueueHandle_t xQueueTemp;
 
-int temperatura = 0 ;
-int potencia =0 ;
-char bufferp[200];
-char buffert[200];
+//QueueHandle_t xQueueBut;
 SemaphoreHandle_t xSemaphore;
+
+
+SemaphoreHandle_t xSemaphorepot;
+
 
 
 /*****************************************************************
@@ -180,6 +194,9 @@ SemaphoreHandle_t xSemaphore;
 
 /** PWM channel instance for LEDs */
 pwm_channel_t g_pwm_channel_led;
+
+// Semaforo dps
+int potencia = 100;
 
 /************************************************************************/
 /* RTOS hooks                                                           */
@@ -229,6 +246,11 @@ extern void vApplicationMallocFailedHook(void)
 /************************************************************************/
 /* init                                                                 */
 /************************************************************************/
+
+
+
+
+
 
 
 static void configure_lcd(void){
@@ -470,7 +492,7 @@ static void config_ADC_TEMP(void){
 
 	/* configura call back */
 	
-	afec_set_callback(AFEC0, AFEC_INTERRUPT_EOC_2,	AFEC_Pot_callback, 5);
+	afec_set_callback(AFEC0, AFEC_INTERRUPT_EOC_0,	AFEC_Pot_callback, 5);
 
 	/*** Configuracao específica do canal AFEC ***/
 	struct afec_ch_config afec_ch_cfg;
@@ -560,24 +582,26 @@ void task_mxt(void){
 void task_lcd(void){
 	xQueueTouch = xQueueCreate( 10, sizeof( touchData ) );
    xQueueTemp = xQueueCreate( 10, sizeof( int ) );
+  // xQueueBut = xQueueCreate( 10, sizeof( int ) );
 	
 	   configure_lcd();
 	  draw_screen();
 	  draw_button(0);
-	  //int duty=0;
-	  //PWM0_init(0, duty);
+	  
 	  
   
   
   touchData touch;
   int temp;
+  int duty;
   
   //escreve
+  char bufferp[200];
+  char buffert[200];
   
   font_draw_text(&digital52, "HH:MM", 0, 0, 1);
-  int pot= 0;
-  sprintf(bufferp,"%d",pot);
-  font_draw_text(&digital52, bufferp, 250, 400, 1);
+  //int pot= 0;
+ 
     
   while (true) {  
      if (xQueueReceive( xQueueTouch, &(touch), ( TickType_t )  500 / portTICK_PERIOD_MS)) {
@@ -586,22 +610,119 @@ void task_lcd(void){
 		
 	  if( xSemaphoreTake(xSemaphore, ( TickType_t ) 50) == pdTRUE ){
 			const TickType_t xDelay = 100/ portTICK_PERIOD_MS;
-			/*
-	   * converte bits -> tensão (Volts)
-	   */
-				int32_t ul_vol;
+		
+			int32_t ul_vol;
 
-		ul_vol = g_ul_value_analog * VOLT_REF / (float) MAX_DIGITAL;
-		temperatura = ul_vol;
-		  sprintf(buffert,"%d",temperatura);
-		  font_draw_text(&digital52, buffert, 50, 400, 1);
-		  	printf("%d\n", temperatura);
+			 ul_vol = (g_ul_value_analog * 100) / 4096;
+			 int temperatura = ul_vol;
+			  sprintf(buffert,"%d",temperatura);
+			  //ili9488_draw_filled_rectangle(BUTTON_X-BUTTON_W/2, BUTTON_Y-BUTTON_H/2, BUTTON_X+BUTTON_W/2, BUTTON_Y+BUTTON_H/2);
+			  ili9488_set_foreground_color(COLOR_CONVERT(COLOR_WHITE));
+			  ili9488_draw_filled_rectangle(50, 400, 150, 450);
+		  
+			  font_draw_text(&digital52, buffert, 50, 400, 1);
+		  		printf("%d *C\n", temperatura);
 
 		}  
+		
+			pwm_channel_update_duty(PWM0, &g_pwm_channel_led, potencia);
+			 sprintf(bufferp,"%d",potencia);
+			 
+			 ili9488_set_foreground_color(COLOR_CONVERT(COLOR_WHITE));
+			 ili9488_draw_filled_rectangle(200, 400, 400, 450);
+			ili9488_set_foreground_color(COLOR_CONVERT(COLOR_BLACK));
+			font_draw_text(&digital52, bufferp, 220, 400, 1);
+	   
+				
+			 
+		  
+	
+		
   }	 
   
   
 }
+
+
+
+
+
+
+
+void but1_callback(void){
+	
+	potencia-=10;
+	if (potencia<0){
+		potencia=0;
+	}
+	printf("%d\n",potencia);
+	//xQueueSend( xQueueBut, &potencia, 0);
+}
+
+
+void but3_callback(void){
+	
+	potencia+=10;
+	if (potencia>100){
+		potencia=100;
+	}
+	printf("%d\n",potencia);
+	
+	//xQueueSend( xQueueBut, &potencia, 0);
+
+}
+
+void init_pio(){
+	
+	pmc_enable_periph_clk(PIOA);
+	
+	pmc_enable_periph_clk(PIOD);
+
+	//pio_configure(LED_PIO, PIO_OUTPUT_0, LED_IDX_MASK, PIO_DEFAULT);
+	
+	
+	// Configura PIO para lidar com o pino do botão como entrada
+	// com pull-up
+	//pio_configure(BUT_PIO, PIO_INPUT, BUT_IDX_MASK, PIO_PULLUP);
+	pio_configure(PIOD, PIO_INPUT, but1_mask, PIO_PULLUP);
+
+	pio_configure(PIOA, PIO_INPUT, but3_mask, PIO_PULLUP);
+
+	// Configura interrupção no pino referente ao botao e associa
+	// função de callback caso uma interrupção for gerada
+	// a função de callback é a: but_callback()
+
+	
+	
+	pio_handler_set(PIOD,
+	ID_PIOD,
+	but1_mask,
+	PIO_IT_FALL_EDGE,
+	but1_callback);
+	
+
+	
+	pio_handler_set(PIOA,
+	ID_PIOA,
+	but3_mask,
+	PIO_IT_FALL_EDGE,
+	but3_callback);
+
+
+	
+	
+	NVIC_EnableIRQ(ID_PIOD);
+	NVIC_SetPriority(ID_PIOD, 7);
+
+	
+	
+	NVIC_EnableIRQ(ID_PIOA);
+	NVIC_SetPriority(ID_PIOA, 7);
+	
+	pio_enable_interrupt(PIOD, but1_mask);
+	pio_enable_interrupt(PIOA, but3_mask);
+}
+
 void task_analog(void){
 	
   
@@ -643,6 +764,19 @@ int main(void)
 	/* Initialize stdio on USART */
 	stdio_serial_init(USART_SERIAL_EXAMPLE, &usart_serial_options);
 	printf("teste print \n");
+	
+	
+	/* Configura pino para ser controlado pelo PWM */
+	pmc_enable_periph_clk(ID_PIO_PWM_0);
+	pio_set_peripheral(PIO_PWM_0, PIO_PERIPH_A, MASK_PIN_PWM_0 );
+	
+	//int duty=0;
+	PWM0_init(0, 100);
+		//pwm_channel_update_duty(PWM0, &g_pwm_channel_led, 50);
+		
+	//OLED		
+	init_pio();
+		
 		
   /* Create task to handler touch */
   if (xTaskCreate(task_mxt, "mxt", TASK_MXT_STACK_SIZE, NULL, TASK_MXT_STACK_PRIORITY, NULL) != pdPASS) {
@@ -669,4 +803,3 @@ int main(void)
 
 	return 0;
 }
-
