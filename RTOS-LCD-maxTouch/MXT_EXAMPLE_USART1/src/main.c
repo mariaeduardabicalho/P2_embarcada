@@ -170,8 +170,6 @@ QueueHandle_t xQueueTemp;
 
 //QueueHandle_t xQueueBut;
 SemaphoreHandle_t xSemaphore;
-
-
 SemaphoreHandle_t xSemaphorepot;
 
 
